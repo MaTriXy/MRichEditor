@@ -27,10 +27,13 @@
         color: #2F2F2F;
         outline: none;
     }
+    .note-editor.note-frame .note-editing-area .note-editable[contenteditable="false"] {
+        background-color: #FFFFFF;
+    }
 
 </style>
 <body>
-<div id="summernote"></div>
+<div id="summernote" contenteditable="true"></div>
 <script>
     $(document).ready(function() {
         initSummernote();

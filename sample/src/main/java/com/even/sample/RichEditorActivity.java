@@ -1,13 +1,16 @@
 package com.even.sample;
 
 import android.annotation.SuppressLint;
+import android.app.Instrumentation;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.os.Bundle;
 import android.support.v4.app.FragmentManager;
 import android.support.v7.app.AppCompatActivity;
+import android.text.TextUtils;
 import android.util.Base64;
 import android.util.TypedValue;
+import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.WebChromeClient;
@@ -15,6 +18,7 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
+import android.widget.Toast;
 import butterknife.BindView;
 import butterknife.ButterKnife;
 import butterknife.OnClick;
@@ -47,6 +51,7 @@ import java.util.List;
     /** The keyboard height provider */
     private KeyboardHeightProvider keyboardHeightProvider;
     private boolean isKeyboardShowing;
+    private String htmlContent = "<p>Hello World</p>";
 
     private RichEditorAction mRichEditorAction;
     private RichEditorCallback mRichEditorCallback;
@@ -145,7 +150,7 @@ import java.util.List;
             }
         });
 
-        mWebView.setWebChromeClient(new WebChromeClient());
+        mWebView.setWebChromeClient(new CustomWebChromeClient());
         mWebView.getSettings().setJavaScriptEnabled(true);
         mWebView.getSettings().setDomStorageEnabled(true);
         mRichEditorCallback = new MRichEditorCallback();
@@ -161,6 +166,22 @@ import java.util.List;
         });
     }
 
+    private class CustomWebChromeClient extends WebChromeClient {
+        @Override public void onProgressChanged(WebView view, int newProgress) {
+            super.onProgressChanged(view, newProgress);
+            if (newProgress == 100) {
+                if (!TextUtils.isEmpty(htmlContent)) {
+                    mRichEditorAction.insertHtml(htmlContent);
+                }
+                KeyboardUtils.showSoftInput(RichEditorActivity.this);
+            }
+        }
+
+        @Override public void onReceivedTitle(WebView view, String title) {
+            super.onReceivedTitle(view, title);
+        }
+    }
+
     @OnClick(R.id.iv_action) void onClickAction() {
         if (flAction.getVisibility() == View.VISIBLE) {
             flAction.setVisibility(View.GONE);
@@ -170,6 +191,22 @@ import java.util.List;
             }
             flAction.setVisibility(View.VISIBLE);
         }
+    }
+
+    private RichEditorCallback.OnGetHtmlListener onGetHtmlListener =
+        new RichEditorCallback.OnGetHtmlListener() {
+            @Override public void getHtml(String html) {
+                if (TextUtils.isEmpty(html)) {
+                    Toast.makeText(RichEditorActivity.this, "Empty Html String", Toast.LENGTH_SHORT)
+                        .show();
+                    return;
+                }
+                Toast.makeText(RichEditorActivity.this, html, Toast.LENGTH_SHORT).show();
+            }
+        };
+
+    @OnClick(R.id.iv_get_html) void onClickGetHtml() {
+        mRichEditorAction.refreshHtml(mRichEditorCallback, onGetHtmlListener);
     }
 
     @OnClick(R.id.iv_action_undo) void onClickUndo() {
@@ -275,9 +312,26 @@ import java.util.List;
             ViewGroup.LayoutParams params = flAction.getLayoutParams();
             params.height = height;
             flAction.setLayoutParams(params);
+            performInputSpaceAndDel();
         } else if (flAction.getVisibility() != View.VISIBLE) {
             flAction.setVisibility(View.GONE);
         }
+    }
+
+    //TODO not a good solution
+    private void performInputSpaceAndDel() {
+        new Thread(new Runnable() {
+            @Override public void run() {
+                try {
+                    Thread.sleep(100);
+                    Instrumentation instrumentation = new Instrumentation();
+                    instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_SPACE);
+                    instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DEL);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
+        }).start();
     }
 
     class MRichEditorCallback extends RichEditorCallback {
