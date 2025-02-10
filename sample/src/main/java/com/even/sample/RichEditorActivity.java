@@ -1,27 +1,28 @@
 package com.even.sample;
 
 import android.annotation.SuppressLint;
-import android.app.Instrumentation;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.os.Bundle;
-import android.support.v4.app.FragmentManager;
-import android.support.v7.app.AppCompatActivity;
 import android.text.TextUtils;
 import android.util.Base64;
 import android.util.TypedValue;
-import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.WebChromeClient;
+import android.webkit.WebResourceRequest;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.Toast;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.fragment.app.FragmentManager;
 import butterknife.BindView;
 import butterknife.ButterKnife;
 import butterknife.OnClick;
+import com.blankj.utilcode.util.FileIOUtils;
+import com.blankj.utilcode.util.KeyboardUtils;
 import com.even.mricheditor.ActionType;
 import com.even.mricheditor.RichEditorAction;
 import com.even.mricheditor.RichEditorCallback;
@@ -30,10 +31,6 @@ import com.even.sample.fragment.EditHyperlinkFragment;
 import com.even.sample.fragment.EditTableFragment;
 import com.even.sample.fragment.EditorMenuFragment;
 import com.even.sample.interfaces.OnActionPerformListener;
-import com.even.sample.keyboard.KeyboardHeightObserver;
-import com.even.sample.keyboard.KeyboardHeightProvider;
-import com.even.sample.keyboard.KeyboardUtils;
-import com.even.sample.util.FileIOUtil;
 import com.lzy.imagepicker.ImagePicker;
 import com.lzy.imagepicker.bean.ImageItem;
 import com.lzy.imagepicker.ui.ImageGridActivity;
@@ -42,14 +39,11 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-@SuppressLint("SetJavaScriptEnabled") public class RichEditorActivity extends AppCompatActivity
-    implements KeyboardHeightObserver {
+@SuppressLint("SetJavaScriptEnabled") public class RichEditorActivity extends AppCompatActivity {
     @BindView(R.id.wv_container) WebView mWebView;
     @BindView(R.id.fl_action) FrameLayout flAction;
     @BindView(R.id.ll_action_bar_container) LinearLayout llActionBarContainer;
 
-    /** The keyboard height provider */
-    private KeyboardHeightProvider keyboardHeightProvider;
     private boolean isKeyboardShowing;
     private String htmlContent = "<p>Hello World</p>";
 
@@ -119,6 +113,17 @@ import java.util.List;
         fm.beginTransaction()
             .add(R.id.fl_action, mEditorMenuFragment, EditorMenuFragment.class.getName())
             .commit();
+        KeyboardUtils.registerSoftInputChangedListener(this, height -> {
+            isKeyboardShowing = height > 0;
+            if (height > 0) {
+                flAction.setVisibility(View.INVISIBLE);
+                ViewGroup.LayoutParams params = flAction.getLayoutParams();
+                params.height = height;
+                flAction.setLayoutParams(params);
+            } else if (flAction.getVisibility() != View.VISIBLE) {
+                flAction.setVisibility(View.GONE);
+            }
+        });
     }
 
     /**
@@ -144,9 +149,9 @@ import java.util.List;
                 super.onPageStarted(view, url, favicon);
             }
 
-            @Override public boolean shouldOverrideUrlLoading(WebView view, String url) {
-                view.loadUrl(url);
-                return true;
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                return super.shouldOverrideUrlLoading(view, request);
             }
         });
 
@@ -157,13 +162,6 @@ import java.util.List;
         mWebView.addJavascriptInterface(mRichEditorCallback, "MRichEditor");
         mWebView.loadUrl("file:///android_asset/richEditor.html");
         mRichEditorAction = new RichEditorAction(mWebView);
-
-        keyboardHeightProvider = new KeyboardHeightProvider(this);
-        findViewById(R.id.fl_container).post(new Runnable() {
-            @Override public void run() {
-                keyboardHeightProvider.start();
-            }
-        });
     }
 
     private class CustomWebChromeClient extends WebChromeClient {
@@ -193,17 +191,14 @@ import java.util.List;
         }
     }
 
-    private RichEditorCallback.OnGetHtmlListener onGetHtmlListener =
-        new RichEditorCallback.OnGetHtmlListener() {
-            @Override public void getHtml(String html) {
-                if (TextUtils.isEmpty(html)) {
-                    Toast.makeText(RichEditorActivity.this, "Empty Html String", Toast.LENGTH_SHORT)
-                        .show();
-                    return;
-                }
-                Toast.makeText(RichEditorActivity.this, html, Toast.LENGTH_SHORT).show();
-            }
-        };
+    private RichEditorCallback.OnGetHtmlListener onGetHtmlListener = html -> {
+        if (TextUtils.isEmpty(html)) {
+            Toast.makeText(RichEditorActivity.this, "Empty Html String", Toast.LENGTH_SHORT)
+                .show();
+            return;
+        }
+        Toast.makeText(RichEditorActivity.this, html, Toast.LENGTH_SHORT).show();
+    };
 
     @OnClick(R.id.iv_get_html) void onClickGetHtml() {
         mRichEditorAction.refreshHtml(mRichEditorCallback, onGetHtmlListener);
@@ -256,7 +251,7 @@ import java.util.List;
     }
 
     private static String encodeFileToBase64Binary(String filePath) {
-        byte[] bytes = FileIOUtil.readFile2BytesByStream(filePath);
+        byte[] bytes = FileIOUtils.readFile2BytesByStream(filePath);
         byte[] encoded = Base64.encode(bytes, Base64.NO_WRAP);
         return new String(encoded);
     }
@@ -264,11 +259,8 @@ import java.util.List;
     @OnClick(R.id.iv_action_insert_link) void onClickInsertLink() {
         KeyboardUtils.hideSoftInput(RichEditorActivity.this);
         EditHyperlinkFragment fragment = new EditHyperlinkFragment();
-        fragment.setOnHyperlinkListener(new EditHyperlinkFragment.OnHyperlinkListener() {
-            @Override public void onHyperlinkOK(String address, String text) {
-                mRichEditorAction.createLink(text, address);
-            }
-        });
+        fragment.setOnHyperlinkListener(
+            (address, text) -> mRichEditorAction.createLink(text, address));
         getSupportFragmentManager().beginTransaction()
             .add(R.id.fl_container, fragment, EditHyperlinkFragment.class.getName())
             .commit();
@@ -277,11 +269,7 @@ import java.util.List;
     @OnClick(R.id.iv_action_table) void onClickInsertTable() {
         KeyboardUtils.hideSoftInput(RichEditorActivity.this);
         EditTableFragment fragment = new EditTableFragment();
-        fragment.setOnTableListener(new EditTableFragment.OnTableListener() {
-            @Override public void onTableOK(int rows, int cols) {
-                mRichEditorAction.insertTable(rows, cols);
-            }
-        });
+        fragment.setOnTableListener((rows, cols) -> mRichEditorAction.insertTable(rows, cols));
         getSupportFragmentManager().beginTransaction()
             .add(R.id.fl_container, fragment, EditHyperlinkFragment.class.getName())
             .commit();
@@ -289,12 +277,10 @@ import java.util.List;
 
     @Override public void onResume() {
         super.onResume();
-        keyboardHeightProvider.setKeyboardHeightObserver(this);
     }
 
     @Override public void onPause() {
         super.onPause();
-        keyboardHeightProvider.setKeyboardHeightObserver(null);
         if (flAction.getVisibility() == View.INVISIBLE) {
             flAction.setVisibility(View.GONE);
         }
@@ -302,36 +288,6 @@ import java.util.List;
 
     @Override public void onDestroy() {
         super.onDestroy();
-        keyboardHeightProvider.close();
-    }
-
-    @Override public void onKeyboardHeightChanged(int height, int orientation) {
-        isKeyboardShowing = height > 0;
-        if (height != 0) {
-            flAction.setVisibility(View.INVISIBLE);
-            ViewGroup.LayoutParams params = flAction.getLayoutParams();
-            params.height = height;
-            flAction.setLayoutParams(params);
-            performInputSpaceAndDel();
-        } else if (flAction.getVisibility() != View.VISIBLE) {
-            flAction.setVisibility(View.GONE);
-        }
-    }
-
-    //TODO not a good solution
-    private void performInputSpaceAndDel() {
-        new Thread(new Runnable() {
-            @Override public void run() {
-                try {
-                    Thread.sleep(100);
-                    Instrumentation instrumentation = new Instrumentation();
-                    instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_SPACE);
-                    instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DEL);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-            }
-        }).start();
     }
 
     class MRichEditorCallback extends RichEditorCallback {
@@ -361,17 +317,17 @@ import java.util.List;
                 return;
             }
 
-            String value = null;
+            String value = "";
             if (values != null && values.length > 0) {
                 value = (String) values[0];
             }
 
             switch (type) {
                 case SIZE:
-                    mRichEditorAction.fontSize(Double.valueOf(value));
+                    mRichEditorAction.fontSize(Double.parseDouble(value));
                     break;
                 case LINE_HEIGHT:
-                    mRichEditorAction.lineHeight(Double.valueOf(value));
+                    mRichEditorAction.lineHeight(Double.parseDouble(value));
                     break;
                 case FORE_COLOR:
                     mRichEditorAction.foreColor(value);
@@ -416,8 +372,7 @@ import java.util.List;
                 case H5:
                 case H6:
                 case LINE:
-                    ActionImageView actionImageView =
-                        (ActionImageView) llActionBarContainer.findViewWithTag(type);
+                    ActionImageView actionImageView = llActionBarContainer.findViewWithTag(type);
                     if (actionImageView != null) {
                         actionImageView.performClick();
                     }
